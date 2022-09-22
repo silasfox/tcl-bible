@@ -3,3 +3,5 @@
 *.html
 *.zip
 *.sxml
+resources/*.tcl
+bible.vfs
