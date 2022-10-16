@@ -2,6 +2,8 @@
 
 package require Tk
 
+variable content
+
 proc K {a args} { set a }
 proc SK* {f g v} { K [$f $v] [$g $v] }
 proc o {f g args} { $f [$g $args] }
@@ -35,8 +37,7 @@ proc string-to-verse {string} {
 proc find-book {book args} {
 	set res {}
 	foreach verse $args {
-		array set v $verse
-		if {[regexp $book $v(book)]} {
+		if {[regexp $book [dict get $verse book]]} {
 			lappend res $verse
 		}
 	}
@@ -46,8 +47,7 @@ proc find-book {book args} {
 proc find-chapter {chapter args} {
 	set res {}
 	foreach verse $args {
-		array set v $verse
-		if {$v(chapter) eq $chapter} {
+		if {[dict get $verse chapter] eq $chapter} {
 			lappend res $verse
 		}
 	}
@@ -55,6 +55,7 @@ proc find-chapter {chapter args} {
 }
 
 proc find-reference {bible ref} {
+	global content
 	if [string is double [first $ref]] {
 		defalias book [list find-book "^[first $ref] [second $ref]"]
 		defalias chapter [list find-chapter [lindex $ref 2]]
@@ -62,12 +63,11 @@ proc find-reference {bible ref} {
 		defalias book [list find-book ^[first $ref]]
 		defalias chapter [list find-chapter [second $ref]]
 	}
-	o chapter book {*}$bible
+	set content [o chapter book {*}$bible]
 }
 
 proc show-verse verse {
-	array set v $verse
-	.text.internal insert end "$v(verse)  $v(text)\n"
+	.text.internal insert end "[dict get $verse verse]  [dict get $verse text]\n"
 }
 
 proc show verses {
@@ -105,19 +105,18 @@ proc show-reference {bible} {
 }
 
 proc search-phrase {bible phrase} {
-	set res {}
+	global content
+	set content {}
 	foreach verse $bible {
-		array set v $verse
-		if [regexp $phrase $v(text)] {
-			lappend res $verse
+		if [regexp $phrase [dict get $verse text]] {
+			lappend content $verse
 		}
 	}
-	set res
+	set content
 }
 
 proc verse-to-latex verse {
-	array set v $verse
-	return \\textsuperscript\{$v(verse)\}$v(text)
+	return \\textsuperscript\{[dict get $verse verse]\}[dict get $verse text]
 }
 
 proc to-latex chapter {
@@ -141,6 +140,34 @@ proc print-reference {bible} {
 	exec zathura $filename.pdf &
 }
 
+proc sort-words {words} {
+	set list '([lmap {word num} $words { list ( \"$word\" $num ) }])
+	set guileStr "(display (sort $list (lambda (a b) (> (cadr a) (cadr b)))))"
+	set guileStr [string map {\{ "" \} ""} $guileStr]
+	return [string map {\( "" \) ""} [exec guile -c $guileStr]]
+}
+
+proc count-words {words} {
+	set res {}
+	foreach word $words {
+		if {[catch { dict get $res $word }]} {
+			dict set res $word 1
+		} else {
+			dict incr res $word
+		}
+	}
+	set res
+}
+
+proc show-meta {} {
+	global content
+	.notes delete 1.0 end
+	set count [sort-words [count-words [join [lmap v $content {dict get $v text}] " "]]]
+	dict for {word count} $count {
+		.notes insert end "$word: $count\n"
+	}
+}
+
 entry .ref -font {{Times New Roman} 12}
 button .get-ref -text "Show Reference"\
 	-command { show-reference elb1871 }
@@ -148,6 +175,8 @@ button .get-ref -text "Show Reference"\
 entry .search -font {{Times New Roman} 12}
 button .search-button -text "Find Phrase"\
 	-command { show-search elb1871 }
+button .meta-search -text "Lift Search"\
+	-command { show-meta }
 
 text .notes -font {{Times New Roman} 12} -wrap word -padx 5 -pady 5
 button .save -text "Save Notes" \
@@ -159,16 +188,17 @@ button .print -text "Print Text" \
 label .counter -textvar counter
 
 grid .text .notes -row 1
-grid .ref .get-ref .text .notes .save .load .print .search .search-button -padx 10 -pady 10
-grid .ref .get-ref .text .notes .search .search-button -stick nesw
-grid .ref .get-ref .search .search-button -row 0
+grid .ref .get-ref .text .notes .save .load .print .search .search-button .meta-search -padx 10 -pady 10
+grid .ref .get-ref .text .notes .search .search-button .meta-search -stick nesw
+grid .ref .get-ref .search .search-button .meta-search -row 0
 grid .save .load .print -row 2
 grid .ref .text -column 0
 grid .text -columnspan 2
 grid .get-ref -column 1
 grid .notes .search -column 2
-grid .notes -columnspan 2
+grid .notes -columnspan 3
 grid .search-button -column 3
+grid .meta-search -column 4
 
 foreach w {.text .notes} {
 	grid columnconfigure . $w -weight 1

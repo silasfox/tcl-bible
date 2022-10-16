@@ -9,5 +9,5 @@ all: pre
 clean:
 	rm -rf bible.vfs bible bible.kit
 
-install: all
+install:
 	cp bible /usr/bin/bible
